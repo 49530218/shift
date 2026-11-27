@@ -92,14 +92,43 @@
     .day-cell {
       border-right: 2px solid var(--border-color); border-bottom: 2px solid var(--border-color);
       padding: 2px 1px; display: flex; flex-direction: column; min-height: 82px;
-      overflow: hidden; background: #fff;
+      overflow: hidden; background: #ffffff;
     }
-    .day-cell.other-month { background: #f8f9fa; opacity: 0.55; }
+
+    /* 非當月日期：淺灰色底色 + 微斜線底紋，確保在一般模式與瀏覽器強制深色模式下都能明顯區隔 */
+    .day-cell.other-month {
+      background-color: #ebedf0;
+      background-image: repeating-linear-gradient(
+        -45deg,
+        #ffffff,
+        #ffffff 4px,
+        transparent 4px,
+        transparent 8px
+      );
+      opacity: 0.72;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .day-cell.other-month {
+        background-color: #ebedf0;
+        background-image: repeating-linear-gradient(
+          -45deg,
+          #ffffff,
+          #ffffff 4px,
+          transparent 4px,
+          transparent 8px
+        );
+      }
+    }
+
     .day-number-wrap { display: flex; justify-content: center; align-items: center; margin-bottom: 2px; flex-shrink: 0; }
     .day-number {
       font-size: 10px; font-weight: 900; color: var(--text-main);
       width: 18px; height: 18px; line-height: 18px; text-align: center; border-radius: 50%;
     }
+    /* 週日與週六日期數字與上方星期同色 */
+    .day-cell.sun .day-number { color: #d93025; }
+    .day-cell.sat .day-number { color: #1a73e8; }
     .day-cell.today .day-number { background: var(--today-bg); color: var(--today-text); }
 
     .events-list { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; scrollbar-width: none; }
@@ -230,7 +259,6 @@
       </button>
       <div class="nav-arrows">
         <button class="icon-btn" id="todayBtn">今</button>
-       
       </div>
     </div>
     <div class="header-right">
@@ -376,7 +404,7 @@
         </div>
         <div id="shiftDefList" style="display:flex; flex-direction:column; gap:6px; flex-shrink:0;"></div>
         <hr style="border:none; border-top:1px solid var(--border-color); flex-shrink:0;" />
-        <div style="font-weight:700; font-size:15px; color:var(--primary); flex-shrink:0;">② 輪班週期排序（貪食蛇接龍）</div>
+        <div style="font-weight:700; font-size:15px; color:var(--primary); flex-shrink:0;">② 輪班週期排序</div>
         <div class="info-hint">點擊下方按鈕依序加入週期（每一格代表連續 1 天，超出12天會自動向下延伸）。點擊已排入的方塊可移除。</div>
         <div class="palette-buttons" id="snakeAddButtons"></div>
         <div class="snake-container" id="snakeSequenceBox"></div>
@@ -781,7 +809,7 @@
       return "id_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
     }
 
-    // ================= 月曆渲染（置中兩排顯示） =================
+    // ================= 月曆渲染（置中兩排顯示 + 週六日同色 + 非當月淺灰底紋） =================
     function renderCalendar() {
       document.getElementById("currentYearMonthText").textContent = `${currentYear}年 ${currentMonth + 1}月`;
       const grid = document.getElementById("daysGrid");
@@ -803,9 +831,14 @@
         const cellDate = new Date(currentYear, currentMonth, 1 - startWeekday + i);
         const dateStr = formatDateStr(cellDate);
         const isCurrentMonth = cellDate.getMonth() === currentMonth;
+        const weekdayIdx = cellDate.getDay();
+        const weekendClass = weekdayIdx === 0 ? " sun" : (weekdayIdx === 6 ? " sat" : "");
 
         const cell = document.createElement("div");
-        cell.className = "day-cell" + (isCurrentMonth ? "" : " other-month") + (dateStr === todayStr ? " today" : "");
+        cell.className = "day-cell"
+          + (isCurrentMonth ? "" : " other-month")
+          + (dateStr === todayStr ? " today" : "")
+          + weekendClass;
 
         const numWrap = document.createElement("div");
         numWrap.className = "day-number-wrap";
@@ -1012,7 +1045,7 @@
       badge.textContent = item.title;
       badge.style.backgroundColor = item.color;
 
-      const timeStr = (item.startTime && item.endTime) ? `${item.startTime} - ${item.endTime} (24H)` : (item.startTime || "未設定時段");
+      const timeStr = (item.startTime && item.endTime) ? `${item.startTime} - ${item.endTime}` : (item.startTime || "未設定時段");
       const typeLabel = item.type === "shift" ? "輪班排程" : "個人行程";
       const hoursHtml = (item.startTime && item.endTime) ? `<div><strong>計算工時：</strong>${item.hours} 小時</div>` : "";
 
