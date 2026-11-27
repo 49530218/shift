@@ -367,11 +367,17 @@
         <div class="form-row">
           <div class="form-group">
             <label>開始時間</label>
-            <div class="time-24h-picker"><select id="evStartHour"></select><span>:</span><select id="evStartMin"></select></div>
+            <div class="time-24h-picker">
+              <select id="evStartHour" onchange="onEventTimeChange('evStart', 'hour')"></select><span>:</span>
+              <select id="evStartMin" onchange="onEventTimeChange('evStart', 'min')"></select>
+            </div>
           </div>
           <div class="form-group">
             <label>結束時間</label>
-            <div class="time-24h-picker"><select id="evEndHour"></select><span>:</span><select id="evEndMin"></select></div>
+            <div class="time-24h-picker">
+              <select id="evEndHour" onchange="onEventTimeChange('evEnd', 'hour')"></select><span>:</span>
+              <select id="evEndMin" onchange="onEventTimeChange('evEnd', 'min')"></select>
+            </div>
           </div>
         </div>
         <div class="form-group"><label>標籤底色（搭配黑字）</label><div class="color-palette" id="evColorPalette"></div></div>
@@ -577,6 +583,7 @@
     let selectedSdColor = COLOR_PALETTE[0].hex;
     let syncing = null;
     let syncTimer = 0;
+    let evEndManuallyEdited = false;
 
     // ================= 台灣國定假日與補假資料庫 (含自動連網更新台灣政府開放資料) =================
     // type: 'holiday' (深橘色 #d84315) | 'makeup' (紅色 #d93025, 補假)
@@ -715,7 +722,7 @@
       const mSel = document.getElementById(prefix + "Min");
       if (!timeStr || !timeStr.includes(":")) {
         hSel.value = "";
-        mSel.value = "";
+        mSel.value = "00";
       } else {
         const [hh, mm] = timeStr.split(":");
         hSel.value = hh.padStart(2, "0");
@@ -725,9 +732,39 @@
 
     function get24HSelectValue(prefix) {
       const h = document.getElementById(prefix + "Hour").value;
-      const m = document.getElementById(prefix + "Min").value;
-      if (!h || !m) return "";
+      const m = document.getElementById(prefix + "Min").value || "00";
+      if (!h) return "";
       return `${h}:${m}`;
+    }
+
+    // 新增/編輯行程時間聯動邏輯：分鐘預設 00，調整開始小時自動帶出結束小時+1
+    function onEventTimeChange(prefix, unit) {
+      const sH = document.getElementById("evStartHour");
+      const sM = document.getElementById("evStartMin");
+      const eH = document.getElementById("evEndHour");
+      const eM = document.getElementById("evEndMin");
+
+      if (prefix === "evStart") {
+        if (sH.value === "") {
+          sM.value = "00";
+          if (!evEndManuallyEdited) {
+            eH.value = "";
+            eM.value = "00";
+          }
+          return;
+        }
+        if (!sM.value) sM.value = "00";
+        if (unit === "hour" && !evEndManuallyEdited) {
+          const nextHour = (parseInt(sH.value, 10) + 1) % 24;
+          eH.value = pad2(nextHour);
+          if (!eM.value) eM.value = "00";
+        }
+      } else if (prefix === "evEnd") {
+        evEndManuallyEdited = (eH.value !== "");
+        if (eH.value !== "" && !eM.value) {
+          eM.value = "00";
+        }
+      }
     }
 
     // ================= 差異同步引擎 =================
@@ -1157,6 +1194,7 @@
     }
 
     function openAddEventModal(presetDateStr = null) {
+      evEndManuallyEdited = false;
       document.getElementById("eventFormTitle").textContent = "添加行程";
       document.getElementById("editItemId").value = "";
       document.getElementById("editItemType").value = "event";
@@ -1172,6 +1210,7 @@
 
     function openEditItemModal(item) {
       closeModal("detailModal");
+      evEndManuallyEdited = Boolean(item.endTime);
       document.getElementById("eventFormTitle").textContent = item.type === "shift" ? "編輯單日班表" : "編輯行程";
       document.getElementById("editItemId").value = item.id;
       document.getElementById("editItemType").value = item.type;
