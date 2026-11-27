@@ -82,7 +82,7 @@
     }
     .weekday { text-align: center; font-size: 12px; font-weight: 600; color: var(--text-sub); padding: 6px 0; }
     .weekday.sun { color: #d93025; }
-    .weekday.sat { color: #1a73e8; }
+    .weekday.sat { color: #d93025; }
 
     .days-grid {
       flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: 1fr;
@@ -95,7 +95,7 @@
       overflow: hidden; background: #ffffff;
     }
 
-    /* 非當月日期：淺灰色底色 + 微斜線底紋，確保在一般模式與瀏覽器強制深色模式下都能明顯區隔 */
+    /* 非當月日期：淺灰色底色 + 白色斜線條紋 */
     .day-cell.other-month {
       background-color: #ebedf0;
       background-image: repeating-linear-gradient(
@@ -126,10 +126,36 @@
       font-size: 10px; font-weight: 900; color: var(--text-main);
       width: 18px; height: 18px; line-height: 18px; text-align: center; border-radius: 50%;
     }
-    /* 週日與週六日期數字與上方星期同色 */
+    /* 週日與週六日期數字統一用紅色 */
     .day-cell.sun .day-number { color: #d93025; }
-    .day-cell.sat .day-number { color: #1a73e8; }
+    .day-cell.sat .day-number { color: #d93025; }
+
+    /* 國定假日(深橘色) 與 補假(紅色) 日期數字 */
+    .day-cell.holiday .day-number { color: #d84315; }
+    .day-cell.makeup-holiday .day-number { color: #d93025; }
+
+    /* 今日圓圈標示（一般平日白字；六日或補假藍圈+紅字；國定假日藍圈+亮橘字） */
     .day-cell.today .day-number { background: var(--today-bg); color: var(--today-text); }
+    .day-cell.today.sun .day-number,
+    .day-cell.today.sat .day-number,
+    .day-cell.today.makeup-holiday .day-number { background: var(--today-bg); color: #ff6b6b; }
+    .day-cell.today.holiday .day-number { background: var(--today-bg); color: #ffab40; }
+
+    /* 國定假日與補假下方註記 */
+    .holiday-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-align: center;
+      line-height: 1.25;
+      padding: 1px 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      width: 100%;
+      pointer-events: none;
+    }
+    .holiday-label.is-holiday { color: #d84315; }
+    .holiday-label.is-makeup { color: #d93025; }
 
     .events-list { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; scrollbar-width: none; }
     .events-list::-webkit-scrollbar { display: none; }
@@ -151,6 +177,7 @@
     @media (min-width: 768px) {
       .day-number { font-size: 12px; width: 22px; height: 22px; line-height: 22px; }
       .day-cell { padding: 3px 3px; min-height: 92px; }
+      .holiday-label { font-size: 11.5px; }
       .event-chip { padding: 3px 5px; }
       .chip-title { font-size: 13px; }
       .chip-time { font-size: 11px; letter-spacing: 0; }
@@ -551,6 +578,125 @@
     let syncing = null;
     let syncTimer = 0;
 
+    // ================= 台灣國定假日與補假資料庫 (含自動連網更新台灣政府開放資料) =================
+    // type: 'holiday' (深橘色 #d84315) | 'makeup' (紅色 #d93025, 補假)
+    const BUILTIN_TW_HOLIDAYS = {
+      // 2025
+      "2025-01-01": { name: "元旦", type: "holiday" },
+      "2025-01-27": { name: "補假", type: "makeup" },
+      "2025-01-28": { name: "農曆除夕", type: "holiday" },
+      "2025-01-29": { name: "春節初一", type: "holiday" },
+      "2025-01-30": { name: "春節初二", type: "holiday" },
+      "2025-01-31": { name: "春節初三", type: "holiday" },
+      "2025-02-28": { name: "和平紀念日", type: "holiday" },
+      "2025-04-03": { name: "補假", type: "makeup" },
+      "2025-04-04": { name: "兒童節/清明節", type: "holiday" },
+      "2025-05-01": { name: "勞動節", type: "holiday" },
+      "2025-05-30": { name: "補假", type: "makeup" },
+      "2025-05-31": { name: "端午節", type: "holiday" },
+      "2025-09-28": { name: "教師節", type: "holiday" },
+      "2025-09-29": { name: "補假", type: "makeup" },
+      "2025-10-06": { name: "中秋節", type: "holiday" },
+      "2025-10-10": { name: "國慶日", type: "holiday" },
+      "2025-10-25": { name: "光復節", type: "holiday" },
+      "2025-12-25": { name: "行憲紀念日", type: "holiday" },
+
+      // 2026 (含新增國定假日及週六日補假規則)
+      "2026-01-01": { name: "元旦", type: "holiday" },
+      "2026-02-15": { name: "小年夜", type: "holiday" },
+      "2026-02-16": { name: "農曆除夕", type: "holiday" },
+      "2026-02-17": { name: "春節初一", type: "holiday" },
+      "2026-02-18": { name: "春節初二", type: "holiday" },
+      "2026-02-19": { name: "春節初三", type: "holiday" },
+      "2026-02-20": { name: "補假", type: "makeup" },
+      "2026-02-27": { name: "補假", type: "makeup" },
+      "2026-02-28": { name: "和平紀念日", type: "holiday" },
+      "2026-04-03": { name: "補假", type: "makeup" },
+      "2026-04-04": { name: "兒童節", type: "holiday" },
+      "2026-04-05": { name: "清明節", type: "holiday" },
+      "2026-04-06": { name: "補假", type: "makeup" },
+      "2026-05-01": { name: "勞動節", type: "holiday" },
+      "2026-06-19": { name: "端午節", type: "holiday" },
+      "2026-09-25": { name: "中秋節", type: "holiday" },
+      "2026-09-28": { name: "教師節", type: "holiday" },
+      "2026-10-09": { name: "補假", type: "makeup" },
+      "2026-10-10": { name: "國慶日", type: "holiday" },
+      "2026-10-25": { name: "光復節", type: "holiday" },
+      "2026-10-26": { name: "補假", type: "makeup" },
+      "2026-12-25": { name: "行憲紀念日", type: "holiday" },
+
+      // 2027
+      "2027-01-01": { name: "元旦", type: "holiday" },
+      "2027-02-04": { name: "小年夜", type: "holiday" },
+      "2027-02-05": { name: "農曆除夕", type: "holiday" },
+      "2027-02-06": { name: "春節初一", type: "holiday" },
+      "2027-02-07": { name: "春節初二", type: "holiday" },
+      "2027-02-08": { name: "春節初三", type: "holiday" },
+      "2027-02-09": { name: "補假", type: "makeup" },
+      "2027-02-10": { name: "補假", type: "makeup" },
+      "2027-02-28": { name: "和平紀念日", type: "holiday" },
+      "2027-03-01": { name: "補假", type: "makeup" },
+      "2027-04-04": { name: "兒童節", type: "holiday" },
+      "2027-04-05": { name: "清明節", type: "holiday" },
+      "2027-04-06": { name: "補假", type: "makeup" },
+      "2027-05-01": { name: "勞動節", type: "holiday" },
+      "2027-05-03": { name: "補假", type: "makeup" },
+      "2027-06-09": { name: "端午節", type: "holiday" },
+      "2027-09-15": { name: "中秋節", type: "holiday" },
+      "2027-09-28": { name: "教師節", type: "holiday" },
+      "2027-10-10": { name: "國慶日", type: "holiday" },
+      "2027-10-11": { name: "補假", type: "makeup" },
+      "2027-10-25": { name: "光復節", type: "holiday" },
+      "2027-12-25": { name: "行憲紀念日", type: "holiday" },
+      "2027-12-27": { name: "補假", type: "makeup" }
+    };
+
+    const HOLIDAY_CACHE_KEY = "tw_holidays_cache_v1";
+    let twHolidays = { ...BUILTIN_TW_HOLIDAYS };
+
+    function loadHolidayCache() {
+      try {
+        const saved = JSON.parse(readStore(HOLIDAY_CACHE_KEY));
+        if (saved && typeof saved === "object") {
+          twHolidays = { ...BUILTIN_TW_HOLIDAYS, ...saved };
+        }
+      } catch (e) {}
+    }
+
+    // 自動從台灣政府開放資料 (TaiwanCalendar CDN) 抓取未來年度國定假日與補假
+    async function fetchLatestTwHolidays() {
+      const years = [currentYear - 1, currentYear, currentYear + 1];
+      let updated = false;
+      for (const y of years) {
+        try {
+          const res = await fetch(`https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/${y}.json`);
+          if (!res.ok) continue;
+          const list = await res.json();
+          if (!Array.isArray(list)) continue;
+          for (const d of list) {
+            if (!d.isHoliday || !d.description) continue;
+            const dateStr = `${d.date.slice(0,4)}-${d.date.slice(4,6)}-${d.date.slice(6,8)}`;
+            const desc = d.description.trim();
+            if (!desc) continue;
+            if (!BUILTIN_TW_HOLIDAYS[dateStr]) {
+              const isMakeup = desc.includes("補假") || desc.includes("調整放假");
+              twHolidays[dateStr] = {
+                name: isMakeup ? "補假" : desc,
+                type: isMakeup ? "makeup" : "holiday"
+              };
+              updated = true;
+            }
+          }
+        } catch (e) {
+          // 離線或尚無該年份資料時使用內建資料
+        }
+      }
+      if (updated) {
+        writeStore(HOLIDAY_CACHE_KEY, JSON.stringify(twHolidays));
+        renderCalendar();
+      }
+    }
+
     // ================= 初始化純 24 小時制雙下拉選單 =================
     function init24HourSelects() {
       const fill = (id, count) => {
@@ -809,7 +955,7 @@
       return "id_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
     }
 
-    // ================= 月曆渲染（置中兩排顯示 + 週六日同色 + 非當月淺灰底紋） =================
+    // ================= 月曆渲染（置中兩排顯示 + 週六日同紅 + 國定假日深橘/補假紅字） =================
     function renderCalendar() {
       document.getElementById("currentYearMonthText").textContent = `${currentYear}年 ${currentMonth + 1}月`;
       const grid = document.getElementById("daysGrid");
@@ -834,11 +980,15 @@
         const weekdayIdx = cellDate.getDay();
         const weekendClass = weekdayIdx === 0 ? " sun" : (weekdayIdx === 6 ? " sat" : "");
 
+        const holInfo = twHolidays[dateStr];
+        const holClass = holInfo ? (holInfo.type === "makeup" ? " makeup-holiday" : " holiday") : "";
+
         const cell = document.createElement("div");
         cell.className = "day-cell"
           + (isCurrentMonth ? "" : " other-month")
           + (dateStr === todayStr ? " today" : "")
-          + weekendClass;
+          + weekendClass
+          + holClass;
 
         const numWrap = document.createElement("div");
         numWrap.className = "day-number-wrap";
@@ -850,6 +1000,14 @@
 
         const listDiv = document.createElement("div");
         listDiv.className = "events-list";
+
+        // 顯示國定假日(深橘字) 或 補假(紅字) 於行程欄空白處
+        if (holInfo) {
+          const holDiv = document.createElement("div");
+          holDiv.className = "holiday-label " + (holInfo.type === "makeup" ? "is-makeup" : "is-holiday");
+          holDiv.textContent = holInfo.name;
+          listDiv.appendChild(holDiv);
+        }
 
         const dayItems = itemsByDate[dateStr] || [];
         for (const item of dayItems) {
@@ -887,6 +1045,7 @@
       if (currentMonth > 11) { currentMonth = 0; currentYear++; }
       else if (currentMonth < 0) { currentMonth = 11; currentYear--; }
       renderCalendar();
+      fetchLatestTwHolidays();
     }
 
     let touchStartX = 0, touchStartY = 0;
@@ -932,7 +1091,13 @@
     function applyYearMonthPicker() {
       const y = parseInt(document.getElementById("pickerYearInput").value, 10);
       const m = parseInt(document.getElementById("pickerMonthSelect").value, 10);
-      if (y >= 2000 && y <= 2100) { currentYear = y; currentMonth = m; renderCalendar(); closeModal("monthPickerModal"); }
+      if (y >= 2000 && y <= 2100) {
+        currentYear = y;
+        currentMonth = m;
+        renderCalendar();
+        fetchLatestTwHolidays();
+        closeModal("monthPickerModal");
+      }
     }
 
     function renderColorPalette(containerId, currentHex, onSelect) {
@@ -1426,8 +1591,10 @@
     });
 
     init24HourSelects();
+    loadHolidayCache();
     loadCache();
     renderCalendar();
+    fetchLatestTwHolidays();
     syncNow();
   </script>
 </body>
