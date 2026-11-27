@@ -1,0 +1,1404 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>排班行事曆 (雲端差異同步版)</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <style>
+    :root {
+      --bg-color: #ffffff;
+      --border-color: #dadce0;
+      --text-main: #202124;
+      --text-sub: #5f6368;
+      --primary: #1a73e8;
+      --primary-hover: #1557b0;
+      --danger: #d93025;
+      --today-bg: #1a73e8;
+      --today-text: #ffffff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-color);
+      background: #fff;
+      z-index: 10;
+      flex-shrink: 0;
+      gap: 6px;
+    }
+
+    .nav-left { display: flex; align-items: center; gap: 6px; }
+    .month-picker-btn {
+      font-size: 18px; font-weight: 600; color: var(--text-main);
+      background: none; border: none; cursor: pointer;
+      display: flex; align-items: center; gap: 4px; padding: 4px 6px; border-radius: 6px;
+    }
+    .nav-arrows { display: flex; gap: 3px; }
+    .icon-btn {
+      background: #fff; border: 1px solid var(--border-color); border-radius: 6px;
+      padding: 5px 8px; font-size: 13px; color: var(--text-main); cursor: pointer;
+    }
+    .header-right { display: flex; align-items: center; gap: 6px; }
+    .sync-status {
+      font-size: 12px; padding: 4px 8px; border-radius: 12px;
+      background: #f1f3f4; color: var(--text-sub); font-weight: 600;
+      cursor: pointer; white-space: nowrap;
+    }
+    .menu-btn {
+      background: var(--primary); color: #fff; border: none; border-radius: 8px;
+      padding: 7px 12px; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+
+    #calendar-capture-area { flex: 1; display: flex; flex-direction: column; background: #fff; overflow: hidden; }
+    .export-header {
+      display: none; padding: 12px 16px; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--border-color); background: #f8f9fa;
+    }
+    .export-header.show { display: flex; }
+
+    .weekdays {
+      display: grid; grid-template-columns: repeat(7, 1fr);
+      border-bottom: 2px solid var(--border-color); background: #fff; flex-shrink: 0;
+    }
+    .weekday { text-align: center; font-size: 12px; font-weight: 600; color: var(--text-sub); padding: 6px 0; }
+    .weekday.sun { color: #d93025; }
+    .weekday.sat { color: #1a73e8; }
+
+    .days-grid {
+      flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: 1fr;
+      overflow-y: auto; border-left: 2px solid var(--border-color);
+    }
+
+    .day-cell {
+      border-right: 2px solid var(--border-color); border-bottom: 2px solid var(--border-color);
+      padding: 2px 1px; display: flex; flex-direction: column; min-height: 82px;
+      overflow: hidden; background: #fff;
+    }
+    .day-cell.other-month { background: #f8f9fa; opacity: 0.55; }
+    .day-number-wrap { display: flex; justify-content: center; align-items: center; margin-bottom: 2px; flex-shrink: 0; }
+    .day-number {
+      font-size: 10px; font-weight: 900; color: var(--text-main);
+      width: 18px; height: 18px; line-height: 18px; text-align: center; border-radius: 50%;
+    }
+    .day-cell.today .day-number { background: var(--today-bg); color: var(--today-text); }
+
+    .events-list { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; scrollbar-width: none; }
+    .events-list::-webkit-scrollbar { display: none; }
+
+    .event-chip {
+      color: #000000; padding: 2px 2px; border-radius: 4px; cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; width: 100%; line-height: 1.2;
+    }
+    .chip-title {
+      font-size: 11px; font-weight: 700; white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; width: 100%; text-align: center;
+    }
+    .chip-time {
+      font-size: 9px; font-weight: 500; color: #1f1f1f; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.3px; width: 100%; text-align: center;
+    }
+
+    @media (min-width: 768px) {
+      .day-number { font-size: 12px; width: 22px; height: 22px; line-height: 22px; }
+      .day-cell { padding: 3px 3px; min-height: 92px; }
+      .event-chip { padding: 3px 5px; }
+      .chip-title { font-size: 13px; }
+      .chip-time { font-size: 11px; letter-spacing: 0; }
+    }
+
+    .export-footer {
+      display: none; padding: 10px 16px; background: #f8f9fa;
+      border-top: 1px solid var(--border-color); font-size: 13px; color: #202124; flex-wrap: wrap; gap: 12px;
+    }
+    .export-footer.show { display: flex; }
+
+    .menu-dropdown {
+      position: fixed; top: 52px; right: 12px; background: #fff;
+      border: 1px solid var(--border-color); border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.18); z-index: 100; width: 215px;
+      display: none; flex-direction: column; overflow: hidden;
+    }
+    .menu-dropdown.open { display: flex; }
+    .menu-item {
+      padding: 12px 16px; font-size: 15px; color: var(--text-main); background: none;
+      border: none; border-bottom: 1px solid #f1f3f4; text-align: left; cursor: pointer;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .menu-item:last-child { border-bottom: none; }
+    .menu-item:active { background: #f1f3f4; }
+
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 200;
+      display: none; align-items: center; justify-content: center; padding: 16px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal-box {
+      background: #fff; border-radius: 14px; width: 100%; max-width: 460px; max-height: 88dvh;
+      display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.25); overflow: hidden;
+    }
+    .modal-header {
+      padding: 14px 18px; border-bottom: 1px solid var(--border-color);
+      display: flex; justify-content: space-between; align-items: center; font-size: 17px; font-weight: 700; flex-shrink: 0;
+    }
+    .close-btn { background: none; border: none; font-size: 22px; color: var(--text-sub); cursor: pointer; padding: 0 4px; }
+    .modal-body { padding: 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; flex: 1; }
+    .modal-footer {
+      padding: 12px 18px; border-top: 1px solid var(--border-color);
+      display: flex; justify-content: flex-end; gap: 10px; background: #fafafa; flex-shrink: 0;
+    }
+
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-row { display: flex; gap: 10px; }
+    .form-row > .form-group { flex: 1; }
+    label { font-size: 13px; font-weight: 600; color: var(--text-sub); }
+    input[type="text"], input[type="date"], input[type="number"], select, textarea {
+      width: 100%; padding: 9px 10px; border: 1px solid var(--border-color);
+      border-radius: 8px; font-size: 15px; color: var(--text-main); background: #fff;
+    }
+
+    .time-24h-picker { display: flex; align-items: center; gap: 4px; }
+    .time-24h-picker select { padding: 8px 6px; text-align: center; font-weight: 600; }
+    .time-24h-picker span { font-weight: 700; color: var(--text-main); }
+
+    .color-palette { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .color-option {
+      height: 36px; border-radius: 8px; border: 2px solid transparent; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #000;
+    }
+    .color-option.selected { border-color: #000; box-shadow: 0 0 0 2px #fff inset; }
+
+    .btn { padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-secondary { background: #e8eaed; color: var(--text-main); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-sm { padding: 5px 10px; font-size: 13px; }
+
+    .shift-def-card {
+      border: 1px solid var(--border-color); border-radius: 8px; padding: 10px;
+      display: flex; justify-content: space-between; align-items: center; background: #fafafa; flex-shrink: 0;
+    }
+    .shift-badge { padding: 4px 10px; border-radius: 6px; color: #000; font-weight: 700; font-size: 14px; display: inline-block; }
+
+    .snake-container {
+      border: 1px solid var(--border-color); border-radius: 8px; padding: 10px;
+      min-height: 54px; height: auto; flex-shrink: 0; background: #f8f9fa;
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center; align-content: flex-start;
+    }
+    .snake-node {
+      padding: 5px 9px; border-radius: 6px; font-size: 13px; font-weight: 700; color: #000;
+      display: inline-flex; align-items: center; gap: 4px; border: 1px solid rgba(0,0,0,0.15); cursor: pointer;
+    }
+    .snake-node.empty-node { background: #ffffff; color: #5f6368; border: 1px dashed #9aa0a6; }
+    .snake-arrow { color: #80868b; font-size: 12px; }
+    .palette-buttons { display: flex; flex-wrap: wrap; gap: 6px; flex-shrink: 0; }
+
+    .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid #f1f3f4; font-size: 15px; }
+    .stat-total { background: #e8f0fe; color: #1967d2; font-weight: 700; padding: 12px; border-radius: 8px; display: flex; justify-content: space-between; font-size: 16px; }
+    .info-hint { font-size: 12px; color: var(--text-sub); background: #f1f3f4; padding: 8px 10px; border-radius: 6px; line-height: 1.4; flex-shrink: 0; }
+    .radio-group { display: flex; flex-direction: column; gap: 8px; }
+    .radio-label { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-main); font-weight: 500; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="nav-left">
+      <button class="month-picker-btn" id="openMonthPickerBtn">
+        <span id="currentYearMonthText">2026年 11月</span>
+        <span style="font-size:11px;">▼</span>
+      </button>
+      <div class="nav-arrows">
+        <button class="icon-btn" id="prevMonthBtn">◀</button>
+        <button class="icon-btn" id="todayBtn">今</button>
+        <button class="icon-btn" id="nextMonthBtn">▶</button>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="sync-status" id="syncStatusBadge" onclick="syncNow()" title="點擊同步最新資料">☁️ 檢查中</span>
+      <button class="menu-btn" id="menuToggleBtn">☰ 功能表</button>
+    </div>
+  </header>
+
+  <div class="menu-dropdown" id="menuDropdown">
+    <button class="menu-item" onclick="openStatsModal()">📊 上班統計</button>
+    <button class="menu-item" onclick="openAddEventModal()">➕ 添加行程</button>
+    <button class="menu-item" onclick="openShiftSetupModal()">🔄 輪班週期表</button>
+    <button class="menu-item" onclick="openBatchShiftModal()">📅 連續插入輪班表</button>
+    <button class="menu-item" onclick="openBatchEventModal()">📋 連續插入行程</button>
+    <button class="menu-item" onclick="openBatchDeleteModal()">🗑️ 連續刪除</button>
+    <button class="menu-item" onclick="exportCalendarImage()">🖼️ 匯出成圖片</button>
+    <button class="menu-item" onclick="openCloudConfigModal()">☁️ 雲端試算表設定</button>
+    <button class="menu-item" onclick="openBackupModal()">💾 本機備份與還原</button>
+  </div>
+
+  <main id="calendar-capture-area">
+    <div class="export-header" id="exportHeader">
+      <strong style="font-size:18px;" id="exportTitleText">2026年 11月 排班行事曆</strong>
+      <span style="font-size:12px; color:#5f6368;" id="exportDateStamp"></span>
+    </div>
+    <div class="weekdays">
+      <div class="weekday sun">日</div><div class="weekday">一</div><div class="weekday">二</div>
+      <div class="weekday">三</div><div class="weekday">四</div><div class="weekday">五</div><div class="weekday sat">六</div>
+    </div>
+    <div class="days-grid" id="daysGrid"></div>
+    <div class="export-footer" id="exportFooter"></div>
+  </main>
+
+  <!-- 1. 快速切換年月視窗 -->
+  <div class="modal-backdrop" id="monthPickerModal">
+    <div class="modal-box" style="max-width:340px;">
+      <div class="modal-header">
+        <span>選擇年份與月份</span>
+        <button class="close-btn" onclick="closeModal('monthPickerModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group"><label>年份</label><input type="number" id="pickerYearInput" min="2000" max="2100" /></div>
+          <div class="form-group">
+            <label>月份</label>
+            <select id="pickerMonthSelect">
+              <option value="0">1月</option><option value="1">2月</option><option value="2">3月</option>
+              <option value="3">4月</option><option value="4">5月</option><option value="5">6月</option>
+              <option value="6">7月</option><option value="7">8月</option><option value="8">9月</option>
+              <option value="9">10月</option><option value="10">11月</option><option value="11">12月</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('monthPickerModal')">取消</button>
+        <button class="btn btn-primary" onclick="applyYearMonthPicker()">確定跳轉</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. 上班統計視窗 -->
+  <div class="modal-backdrop" id="statsModal">
+    <div class="modal-box">
+      <div class="modal-header"><span id="statsModalTitle">上班統計</span><button class="close-btn" onclick="closeModal('statsModal')">&times;</button></div>
+      <div class="modal-body" id="statsModalBody"></div>
+      <div class="modal-footer"><button class="btn btn-primary" onclick="closeModal('statsModal')">關閉</button></div>
+    </div>
+  </div>
+
+  <!-- 3. 添加 / 編輯行程視窗 -->
+  <div class="modal-backdrop" id="eventFormModal">
+    <div class="modal-box">
+      <div class="modal-header"><span id="eventFormTitle">添加行程</span><button class="close-btn" onclick="closeModal('eventFormModal')">&times;</button></div>
+      <div class="modal-body">
+        <input type="hidden" id="editItemId" /><input type="hidden" id="editItemType" value="event" />
+        <div class="form-group"><label>標題名稱 *</label><input type="text" id="evTitle" placeholder="例如：開會、特休、看牙醫" /></div>
+        <div class="form-group"><label>日期 *</label><input type="date" id="evDate" /></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>開始時間 (24H，選填)</label>
+            <div class="time-24h-picker"><select id="evStartHour"></select><span>:</span><select id="evStartMin"></select></div>
+          </div>
+          <div class="form-group">
+            <label>結束時間 (24H，選填)</label>
+            <div class="time-24h-picker"><select id="evEndHour"></select><span>:</span><select id="evEndMin"></select></div>
+          </div>
+        </div>
+        <div class="form-group"><label>標籤底色（搭配黑字）</label><div class="color-palette" id="evColorPalette"></div></div>
+        <div class="form-group"><label>備註內容</label><textarea id="evNote" maxlength="5000" placeholder="輸入詳細內容..."></textarea></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('eventFormModal')">取消</button>
+        <button class="btn btn-primary" onclick="saveEventItem()">儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. 詳細小框 -->
+  <div class="modal-backdrop" id="detailModal">
+    <div class="modal-box" style="max-width:380px;">
+      <div class="modal-header"><span id="detailHeaderBadge" class="shift-badge">詳細內容</span><button class="close-btn" onclick="closeModal('detailModal')">&times;</button></div>
+      <div class="modal-body" id="detailBody" style="gap:10px; font-size:15px;"></div>
+      <div class="modal-footer" style="justify-content: space-between;">
+        <button class="btn btn-danger" id="detailDeleteBtn">刪除此筆</button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-secondary" id="detailEditBtn">編輯</button>
+          <button class="btn btn-primary" onclick="closeModal('detailModal')">關閉</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. 輪班週期表設定視窗 -->
+  <div class="modal-backdrop" id="shiftSetupModal">
+    <div class="modal-box" style="max-width:520px;">
+      <div class="modal-header"><span>輪班週期表設定</span><button class="close-btn" onclick="closeModal('shiftSetupModal')">&times;</button></div>
+      <div class="modal-body">
+        <div style="font-weight:700; font-size:15px; color:var(--primary);">① 設定單個班別（24小時制）</div>
+        <div style="border:1px solid var(--border-color); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:10px; flex-shrink:0;">
+          <input type="hidden" id="editShiftDefId" />
+          <div class="form-row">
+            <div class="form-group"><label>班別名稱 *</label><input type="text" id="sdName" placeholder="如：早班、中班、夜班" /></div>
+            <div class="form-group"><label>自動計算工時</label><input type="text" id="sdCalcHoursDisplay" readonly value="8 小時" style="background:#f1f3f4; font-weight:700;" /></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>上班時間 (24H) *</label>
+              <div class="time-24h-picker"><select id="sdStartHour" onchange="updateShiftHoursPreview()"></select><span>:</span><select id="sdStartMin" onchange="updateShiftHoursPreview()"></select></div>
+            </div>
+            <div class="form-group">
+              <label>下班時間 (24H) *</label>
+              <div class="time-24h-picker"><select id="sdEndHour" onchange="updateShiftHoursPreview()"></select><span>:</span><select id="sdEndMin" onchange="updateShiftHoursPreview()"></select></div>
+            </div>
+          </div>
+          <div class="info-hint" id="sdCrossDayHint">一般當日班次，工時全數計入當日。</div>
+          <div class="form-group"><label>班別底色（8組高對比黑字色票）</label><div class="color-palette" id="sdColorPalette"></div></div>
+          <div class="form-group"><label>備註內容</label><input type="text" id="sdNote" placeholder="選填，例如：需提前10分鐘交接" /></div>
+          <div style="display:flex; justify-content:flex-end; gap:8px;">
+            <button class="btn btn-secondary btn-sm" id="cancelEditShiftDefBtn" style="display:none;" onclick="resetShiftDefForm()">取消編輯</button>
+            <button class="btn btn-primary btn-sm" onclick="saveShiftDefinition()">儲存此班別</button>
+          </div>
+        </div>
+        <div id="shiftDefList" style="display:flex; flex-direction:column; gap:6px; flex-shrink:0;"></div>
+        <hr style="border:none; border-top:1px solid var(--border-color); flex-shrink:0;" />
+        <div style="font-weight:700; font-size:15px; color:var(--primary); flex-shrink:0;">② 輪班週期排序（貪食蛇接龍）</div>
+        <div class="info-hint">點擊下方按鈕依序加入週期（每一格代表連續 1 天，超出12天會自動向下延伸）。點擊已排入的方塊可移除。</div>
+        <div class="palette-buttons" id="snakeAddButtons"></div>
+        <div class="snake-container" id="snakeSequenceBox"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-shrink:0; padding-bottom:6px;">
+          <span id="snakeLengthLabel" style="font-size:13px; font-weight:600; color:var(--text-sub);">目前週期長度：0 天</span>
+          <button class="btn btn-secondary btn-sm" onclick="clearSnakeSequence()">清空重排</button>
+        </div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-primary" onclick="closeModal('shiftSetupModal')">完成設定</button></div>
+    </div>
+  </div>
+
+  <!-- 6. 連續插入輪班表視窗 -->
+  <div class="modal-backdrop" id="batchShiftModal">
+    <div class="modal-box">
+      <div class="modal-header"><span>連續插入輪班表</span><button class="close-btn" onclick="closeModal('batchShiftModal')">&times;</button></div>
+      <div class="modal-body">
+        <div class="form-group"><label>目前設定的輪班週期預覽</label><div id="batchShiftPreview" class="snake-container"></div></div>
+        <div class="form-row">
+          <div class="form-group"><label>開始年月日 *</label><input type="date" id="bsStartDate" /></div>
+          <div class="form-group"><label>結束年月日 *</label><input type="date" id="bsEndDate" /></div>
+        </div>
+        <div class="info-hint">
+          • 系統將從「開始日」起逐日對應週期連續填入至「結束日」。<br/>
+          • 跨日夜班之完整總工時皆全數計入該排班日。
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('batchShiftModal')">取消</button>
+        <button class="btn btn-primary" onclick="executeBatchShift()">開始連續插入</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. 連續插入行程視窗 -->
+  <div class="modal-backdrop" id="batchEventModal">
+    <div class="modal-box">
+      <div class="modal-header"><span>連續插入行程（複製單日行程）</span><button class="close-btn" onclick="closeModal('batchEventModal')">&times;</button></div>
+      <div class="modal-body">
+        <div class="form-group"><label>1. 選擇要複製哪一天的行程</label><input type="date" id="beSourceDate" onchange="loadSourceDayEvents()" /></div>
+        <div class="form-group"><label>2. 選擇該日的哪一筆安排</label><select id="beSourceEventSelect"><option value="">請先選擇上方日期</option></select></div>
+        <div class="form-row">
+          <div class="form-group"><label>3. 連續貼上開始日 *</label><input type="date" id="beTargetStart" /></div>
+          <div class="form-group"><label>4. 連續貼上結束日 *</label><input type="date" id="beTargetEnd" /></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('batchEventModal')">取消</button>
+        <button class="btn btn-primary" onclick="executeBatchEvent()">確認連續複製</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8. 連續刪除視窗 -->
+  <div class="modal-backdrop" id="batchDeleteModal">
+    <div class="modal-box">
+      <div class="modal-header"><span>連續刪除</span><button class="close-btn" onclick="closeModal('batchDeleteModal')">&times;</button></div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group"><label>開始年月日 *</label><input type="date" id="bdStartDate" /></div>
+          <div class="form-group"><label>結束年月日 *</label><input type="date" id="bdEndDate" /></div>
+        </div>
+        <div class="form-group">
+          <label>刪除範圍選項</label>
+          <div class="radio-group">
+            <label class="radio-label"><input type="radio" name="deleteMode" value="all" checked /><span>全部刪除（清空區間內所有輪班表與私人行程）</span></label>
+            <label class="radio-label"><input type="radio" name="deleteMode" value="shiftsOnly" /><span>僅刪除輪班表（保留手動添加的私人行程）</span></label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('batchDeleteModal')">取消</button>
+        <button class="btn btn-danger" onclick="executeBatchDelete()">確認刪除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 9. 雲端試算表設定視窗 -->
+  <div class="modal-backdrop" id="cloudConfigModal">
+    <div class="modal-box">
+      <div class="modal-header"><span>☁️ Google 試算表統一雲端存檔</span><button class="close-btn" onclick="closeModal('cloudConfigModal')">&times;</button></div>
+      <div class="modal-body">
+        <div class="info-hint">
+          已啟用「差異同步」：只傳送有變動的紀錄，同一筆以最新編輯為準，並以雲端資料為主。
+        </div>
+        <div class="form-group">
+          <label>Apps Script 網頁應用程式網址 (URL)</label>
+          <input type="text" id="cloudApiUrlInput" placeholder="https://script.google.com/macros/s/AKfycbyY4WDsKagXBwadc18k_eT755-Yk2wanf_6-IXleWsCCmJtgJHWN4sNaDUaWH6H_TEBWA/exec" />
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-secondary btn-sm" onclick="reloadFromCloud()">⬇️ 重新下載雲端全部資料</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('cloudConfigModal')">取消</button>
+        <button class="btn btn-primary" onclick="saveCloudConfig()">儲存並同步</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10. 本機備份與還原視窗 -->
+  <div class="modal-backdrop" id="backupModal">
+    <div class="modal-box">
+      <div class="modal-header"><span>本機資料備份與還原</span><button class="close-btn" onclick="closeModal('backupModal')">&times;</button></div>
+      <div class="modal-body">
+        <button class="btn btn-primary" onclick="exportBackupJSON()">⬇️ 匯出備份檔 (JSON)</button>
+        <hr style="border:none; border-top:1px solid var(--border-color);" />
+        <div class="form-group">
+          <label>⬆️ 從備份檔還原（將覆蓋目前資料並同步至雲端）</label>
+          <input type="file" id="importFileInput" accept=".json" onchange="importBackupJSON(event)" />
+        </div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('backupModal')">關閉</button></div>
+    </div>
+  </div>
+
+  <script>
+    const COLOR_PALETTE = [
+      { name: "薄荷綠", hex: "#A7F3D0" },
+      { name: "天藍色", hex: "#BAE6FD" },
+      { name: "蜜桃橘", hex: "#FED7AA" },
+      { name: "檸檬黃", hex: "#FEF08A" },
+      { name: "薰衣草", hex: "#DDD6FE" },
+      { name: "珊瑚粉", hex: "#FECDD3" },
+      { name: "萊姆綠", hex: "#D9F99D" },
+      { name: "青藍色", hex: "#A5F3FC" }
+    ];
+
+    const CACHE_KEY = "shift_calendar_sync_v3";   // 新版快取；舊版本機紀錄一律不讀取
+    const CLOUD_URL_KEY = "shift_calendar_cloud_api_url";
+    const DEFAULT_CLOUD_URL = "https://script.google.com/macros/s/AKfycbyY4WDsKagXBwadc18k_eT755-Yk2wanf_6-IXleWsCCmJtgJHWN4sNaDUaWH6H_TEBWA/exec";
+    const SYNC_INTERVAL_MS = 30000;
+
+    // 畫面用資料 (由 cache.records 組出)
+    let appData = { shiftDefs: [], snakeCycle: [], items: [] };
+    // since: 已取得的雲端版本號；offset: 與雲端的時差；pending: 尚未上傳的紀錄 id
+    const emptyCache = () => ({ since: 0, offset: 0, records: {}, pending: {} });
+    let cache = emptyCache();
+
+    let currentYear = new Date().getFullYear();
+    let currentMonth = new Date().getMonth();
+    let selectedEvColor = COLOR_PALETTE[0].hex;
+    let selectedSdColor = COLOR_PALETTE[0].hex;
+    let syncing = null;
+    let syncTimer = 0;
+
+    // ================= 初始化純 24 小時制雙下拉選單 =================
+    function init24HourSelects() {
+      const fill = (id, count) => {
+        const sel = document.getElementById(id);
+        if (id.startsWith("ev")) sel.add(new Option("--", ""));
+        for (let i = 0; i < count; i++) sel.add(new Option(pad2(i), pad2(i)));
+      };
+      ["ev", "sd"].forEach(p => ["Start", "End"].forEach(q => {
+        fill(p + q + "Hour", 24);
+        fill(p + q + "Min", 60);
+      }));
+    }
+
+    function set24HSelectValue(prefix, timeStr) {
+      const hSel = document.getElementById(prefix + "Hour");
+      const mSel = document.getElementById(prefix + "Min");
+      if (!timeStr || !timeStr.includes(":")) {
+        hSel.value = "";
+        mSel.value = "";
+      } else {
+        const [hh, mm] = timeStr.split(":");
+        hSel.value = hh.padStart(2, "0");
+        mSel.value = mm.padStart(2, "0");
+      }
+    }
+
+    function get24HSelectValue(prefix) {
+      const h = document.getElementById(prefix + "Hour").value;
+      const m = document.getElementById(prefix + "Min").value;
+      if (!h || !m) return "";
+      return `${h}:${m}`;
+    }
+
+    // ================= 差異同步引擎 =================
+    const getCloudUrl = () => readStore(CLOUD_URL_KEY) || DEFAULT_CLOUD_URL;
+
+    function readStore(key) {
+      try { return localStorage.getItem(key); } catch (e) { return null; }
+    }
+    function writeStore(key, value) {
+      try { localStorage.setItem(key, value); } catch (e) { console.warn("本機快取寫入失敗", e); }
+    }
+    const saveCache = () => writeStore(CACHE_KEY, JSON.stringify(cache));
+
+    function loadCache() {
+      try {
+        const saved = JSON.parse(readStore(CACHE_KEY));
+        if (saved && saved.records) cache = saved;
+      } catch (e) {
+        console.warn("本機快取損毀，改由雲端重新下載", e);
+      }
+      rebuild();
+    }
+
+    function rebuild() {
+      appData = { shiftDefs: [], snakeCycle: [], items: [] };
+      for (const rec of Object.values(cache.records)) {
+        if (rec.deleted) continue;
+        if (rec.kind === "item") appData.items.push(rec.data);
+        else if (rec.kind === "def") appData.shiftDefs.push(rec.data);
+        else if (rec.kind === "cycle") appData.snakeCycle = [...rec.data];
+      }
+    }
+
+    // 所有新增 / 修改 / 刪除都經過這裡 (data = null 代表刪除)
+    function setRecord(kind, id, data) {
+      const old = cache.records[id];
+      const mtime = Math.max(Date.now() + cache.offset, old ? old.mtime + 1 : 0);
+      cache.records[id] = { id, kind, mtime, deleted: data === null, data };
+      cache.pending[id] = true;
+    }
+    const putItem = item => setRecord("item", item.id, item);
+    const removeItem = id => setRecord("item", id, null);
+    const saveCycle = () => setRecord("cycle", "cycle", [...appData.snakeCycle]);
+
+    function commit() {
+      rebuild();
+      saveCache();
+      renderCalendar();
+      setSyncBadge("📝 待上傳", "#FEF08A", "#000");
+      clearTimeout(syncTimer);
+      syncTimer = setTimeout(syncNow, 800);   // 連續操作合併成一次上傳
+    }
+
+    function setSyncBadge(text, bg = "#f1f3f4", color = "#5f6368") {
+      const badge = document.getElementById("syncStatusBadge");
+      badge.textContent = text;
+      badge.style.backgroundColor = bg;
+      badge.style.color = color;
+    }
+
+    // 同一時間只跑一個同步；回傳 true 代表成功
+    function syncNow() {
+      if (!syncing) {
+        syncing = runSync().finally(() => { syncing = null; });
+      }
+      return syncing;
+    }
+
+    async function runSync() {
+      setSyncBadge("🔄 同步中...", "#BAE6FD", "#000");
+      try {
+        do {
+          await exchange();
+        } while (Object.keys(cache.pending).length);   // 傳送期間又有新編輯就再送一次
+        setSyncBadge(`☁️ 已同步 ${new Date().toTimeString().slice(0, 5)}`, "#A7F3D0", "#000");
+        return true;
+      } catch (err) {
+        console.error("同步失敗", err);
+        const n = Object.keys(cache.pending).length;
+        setSyncBadge(n ? `⚠️ 未上傳 ${n} 筆` : "⚠️ 連線失敗", "#FECDD3", "#000");
+        return false;
+      }
+    }
+
+    // 一次請求：上傳本機變動，同時取回雲端自上次版本後的變動
+    async function exchange() {
+      const target = cache;
+      const changes = Object.keys(target.pending).map(id => target.records[id]);
+      const abort = new AbortController();
+      const timeout = setTimeout(() => abort.abort(), 45000);
+      let result;
+      const started = Date.now();
+      try {
+        const res = await fetch(getCloudUrl(), {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ action: "sync", since: target.since, changes }),
+          signal: abort.signal
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        result = await res.json();
+      } finally {
+        clearTimeout(timeout);
+      }
+      if (result.error || !Array.isArray(result.records)) throw new Error(result.error || "回應格式不符");
+      if (target !== cache) return;   // 期間按了「重新下載」，丟棄舊回應
+
+      const sent = new Map(changes.map(c => [c.id, c.mtime]));
+      for (const [id, mtime] of sent) {
+        if (cache.records[id] && cache.records[id].mtime === mtime) delete cache.pending[id];
+      }
+
+      let changed = false;
+      if (result.full) {   // 完整下載：本機只保留還沒上傳的紀錄
+        const keep = {};
+        for (const id in cache.pending) keep[id] = cache.records[id];
+        cache.records = keep;
+        changed = true;
+      }
+      for (const rec of result.records) {
+        const local = cache.records[rec.id];
+        if (cache.pending[rec.id] && local.mtime > rec.mtime) continue;
+        delete cache.pending[rec.id];
+        if (JSON.stringify(local) !== JSON.stringify(rec)) {
+          cache.records[rec.id] = rec;
+          changed = true;
+        }
+      }
+      // 不超前雲端時間 (網路延遲不計入)，只校正明顯不準的裝置時鐘
+      const skew = result.now - (started + Date.now()) / 2;
+      cache.offset = Math.abs(skew) > 15000 ? Math.round(skew) : 0;
+      cache.since = result.rev;
+      saveCache();
+      if (changed) refreshViews();
+    }
+
+    function refreshViews() {
+      rebuild();
+      renderCalendar();
+      if (document.getElementById("shiftSetupModal").classList.contains("open")) {
+        renderShiftDefList();
+        renderSnakeBuilder();
+      }
+    }
+
+    function openCloudConfigModal() {
+      document.getElementById("cloudApiUrlInput").value = getCloudUrl();
+      openModal("cloudConfigModal");
+    }
+
+    async function saveCloudConfig() {
+      const url = document.getElementById("cloudApiUrlInput").value.trim() || DEFAULT_CLOUD_URL;
+      if (url !== getCloudUrl()) {   // 換了試算表，舊快取不可混用
+        writeStore(CLOUD_URL_KEY, url);
+        cache = emptyCache();
+        saveCache();
+        refreshViews();
+      }
+      closeModal("cloudConfigModal");
+      if (syncing) await syncing;
+      await syncNow();
+    }
+
+    async function reloadFromCloud() {
+      const n = Object.keys(cache.pending).length;
+      if (n && !confirm(`有 ${n} 筆尚未上傳的編輯，重新下載會放棄它們。確定嗎？`)) return;
+      cache = emptyCache();
+      saveCache();
+      refreshViews();
+      if (syncing) await syncing;
+      alert(await syncNow() ? `已從雲端讀取共 ${appData.items.length} 筆資料！` : "讀取失敗，請檢查網路連線或 Apps Script 部署權限。");
+    }
+
+    // ================= 24H 工時計算 =================
+    function timeToMinutes(tStr) {
+      if (!tStr || !tStr.includes(":")) return null;
+      const [h, m] = tStr.split(":").map(Number);
+      return h * 60 + m;
+    }
+
+    function calculateShiftHours(startStr, endStr) {
+      const sMin = timeToMinutes(startStr);
+      const eMin = timeToMinutes(endStr);
+      if (sMin === null || eMin === null) return { hours: 0, isCrossDay: false, desc: "" };
+
+      if (eMin === 0 && sMin > 0) {
+        const hrs = Math.round(((1440 - sMin) / 60) * 100) / 100;
+        return { hours: hrs, isCrossDay: false, desc: `24H制當日班次，工時 ${hrs} 小時全數計入排班日。` };
+      }
+
+      if (eMin >= sMin) {
+        const hrs = Math.round(((eMin - sMin) / 60) * 100) / 100;
+        return { hours: hrs, isCrossDay: false, desc: `24H制當日班次，工時 ${hrs} 小時全數計入排班日。` };
+      } else {
+        const beforeMidnightMins = 1440 - sMin;
+        const afterMidnightMins = eMin;
+        const totalHrs = Math.round(((beforeMidnightMins + afterMidnightMins) / 60) * 100) / 100;
+        return {
+          hours: totalHrs,
+          isCrossDay: true,
+          desc: `跨午夜班次（00:00前 ${(beforeMidnightMins/60).toFixed(2)}h ＋ 00:00後 ${(afterMidnightMins/60).toFixed(2)}h），總工時 ${totalHrs} 小時全數計入該排班日。`
+        };
+      }
+    }
+
+    function addDaysToDateStr(dateStr, offsetDays) {
+      const [y, m, d] = dateStr.split("-").map(Number);
+      return formatDateStr(new Date(y, m - 1, d + offsetDays));
+    }
+
+    function pad2(n) { return String(n).padStart(2, "0"); }
+
+    function esc(value) {
+      return String(value ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+    }
+
+    function formatDateStr(dateObj) {
+      const y = dateObj.getFullYear();
+      const m = pad2(dateObj.getMonth() + 1);
+      const d = pad2(dateObj.getDate());
+      return `${y}-${m}-${d}`;
+    }
+
+    function generateId() {
+      return "id_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
+    }
+
+    // ================= 月曆渲染（置中兩排顯示） =================
+    function renderCalendar() {
+      document.getElementById("currentYearMonthText").textContent = `${currentYear}年 ${currentMonth + 1}月`;
+      const grid = document.getElementById("daysGrid");
+      grid.innerHTML = "";
+
+      const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
+      const startWeekday = firstDayOfMonth.getDay();
+      const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+      const totalCells = Math.ceil((startWeekday + daysInMonth) / 7) * 7;
+      const todayStr = formatDateStr(new Date());
+
+      const itemsByDate = {};
+      for (const item of appData.items) {
+        if (!itemsByDate[item.date]) itemsByDate[item.date] = [];
+        itemsByDate[item.date].push(item);
+      }
+
+      for (let i = 0; i < totalCells; i++) {
+        const cellDate = new Date(currentYear, currentMonth, 1 - startWeekday + i);
+        const dateStr = formatDateStr(cellDate);
+        const isCurrentMonth = cellDate.getMonth() === currentMonth;
+
+        const cell = document.createElement("div");
+        cell.className = "day-cell" + (isCurrentMonth ? "" : " other-month") + (dateStr === todayStr ? " today" : "");
+
+        const numWrap = document.createElement("div");
+        numWrap.className = "day-number-wrap";
+        const numSpan = document.createElement("span");
+        numSpan.className = "day-number";
+        numSpan.textContent = cellDate.getDate();
+        numWrap.appendChild(numSpan);
+        cell.appendChild(numWrap);
+
+        const listDiv = document.createElement("div");
+        listDiv.className = "events-list";
+
+        const dayItems = itemsByDate[dateStr] || [];
+        for (const item of dayItems) {
+          const chip = document.createElement("div");
+          chip.className = "event-chip";
+          chip.style.backgroundColor = item.color || "#A7F3D0";
+
+          const titleDiv = document.createElement("div");
+          titleDiv.className = "chip-title";
+          titleDiv.textContent = item.title;
+          chip.appendChild(titleDiv);
+
+          if (item.startTime) {
+            const timeDiv = document.createElement("div");
+            timeDiv.className = "chip-time";
+            timeDiv.textContent = item.endTime ? `(${item.startTime}-${item.endTime})` : `(${item.startTime})`;
+            chip.appendChild(timeDiv);
+          }
+
+          chip.onclick = (e) => {
+            e.stopPropagation();
+            openDetailModal(item.id);
+          };
+          listDiv.appendChild(chip);
+        }
+
+        cell.onclick = () => openAddEventModal(dateStr);
+        cell.appendChild(listDiv);
+        grid.appendChild(cell);
+      }
+    }
+
+    function changeMonth(delta) {
+      currentMonth += delta;
+      if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+      else if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+      renderCalendar();
+    }
+
+    let touchStartX = 0, touchStartY = 0;
+    const calArea = document.getElementById("calendar-capture-area");
+    calArea.addEventListener("touchstart", (e) => {
+      touchStartX = e.changedTouches[0].screenX;
+      touchStartY = e.changedTouches[0].screenY;
+    }, { passive: true });
+    calArea.addEventListener("touchend", (e) => {
+      const dx = e.changedTouches[0].screenX - touchStartX;
+      const dy = e.changedTouches[0].screenY - touchStartY;
+      if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.4) changeMonth(dx < 0 ? 1 : -1);
+    }, { passive: true });
+
+    document.getElementById("prevMonthBtn").onclick = () => changeMonth(-1);
+    document.getElementById("nextMonthBtn").onclick = () => changeMonth(1);
+    document.getElementById("todayBtn").onclick = () => {
+      const now = new Date();
+      currentYear = now.getFullYear();
+      currentMonth = now.getMonth();
+      renderCalendar();
+    };
+
+    const menuBtn = document.getElementById("menuToggleBtn");
+    const menuDropdown = document.getElementById("menuDropdown");
+    menuBtn.onclick = (e) => { e.stopPropagation(); menuDropdown.classList.toggle("open"); };
+    document.addEventListener("click", (e) => {
+      if (!menuDropdown.contains(e.target) && e.target !== menuBtn) menuDropdown.classList.remove("open");
+    });
+
+    function openModal(id) {
+      menuDropdown.classList.remove("open");
+      const needsData = ["eventFormModal", "shiftSetupModal", "batchShiftModal", "batchEventModal", "batchDeleteModal", "backupModal"];
+      if (!cache.since && needsData.includes(id)) return alert("尚未取得雲端資料，請連線後點右上角雲端圖示。");
+      document.getElementById(id).classList.add("open");
+    }
+    function closeModal(id) { document.getElementById(id).classList.remove("open"); }
+
+    document.getElementById("openMonthPickerBtn").onclick = () => {
+      document.getElementById("pickerYearInput").value = currentYear;
+      document.getElementById("pickerMonthSelect").value = currentMonth;
+      openModal("monthPickerModal");
+    };
+
+    function applyYearMonthPicker() {
+      const y = parseInt(document.getElementById("pickerYearInput").value, 10);
+      const m = parseInt(document.getElementById("pickerMonthSelect").value, 10);
+      if (y >= 2000 && y <= 2100) { currentYear = y; currentMonth = m; renderCalendar(); closeModal("monthPickerModal"); }
+    }
+
+    function renderColorPalette(containerId, currentHex, onSelect) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = "";
+      COLOR_PALETTE.forEach(c => {
+        const btn = document.createElement("div");
+        btn.className = "color-option" + (c.hex.toUpperCase() === currentHex.toUpperCase() ? " selected" : "");
+        btn.style.backgroundColor = c.hex;
+        btn.textContent = c.name;
+        btn.onclick = () => { onSelect(c.hex); renderColorPalette(containerId, c.hex, onSelect); };
+        container.appendChild(btn);
+      });
+    }
+
+    // ================= 統計、增刪改、批次操作 =================
+    function calculateMonthStats(year, month) {
+      const prefix = `${year}-${String(month + 1).padStart(2, "0")}-`;
+      const monthItems = appData.items.filter(it => it.date.startsWith(prefix));
+      const shiftMap = {};
+      let totalShiftDays = 0, totalShiftHours = 0;
+
+      for (const it of monthItems) {
+        if (it.type === "shift") {
+          if (!shiftMap[it.title]) shiftMap[it.title] = { count: 0, hours: 0, color: it.color };
+          shiftMap[it.title].count += 1;
+          shiftMap[it.title].hours += (it.hours || 0);
+          totalShiftDays += 1;
+          totalShiftHours += (it.hours || 0);
+        }
+      }
+      return { shiftMap, totalShiftDays, totalShiftHours: Math.round(totalShiftHours * 100) / 100 };
+    }
+
+    function openStatsModal() {
+      const stats = calculateMonthStats(currentYear, currentMonth);
+      document.getElementById("statsModalTitle").textContent = `${currentYear}年${currentMonth + 1}月 上班統計`;
+      const body = document.getElementById("statsModalBody");
+      body.innerHTML = "";
+      const keys = Object.keys(stats.shiftMap);
+      if (keys.length === 0) {
+        body.innerHTML = `<div style="text-align:center; color:#5f6368; padding:20px 0;">本月尚無任何輪班紀錄</div>`;
+      } else {
+        keys.forEach(title => {
+          const data = stats.shiftMap[title];
+          const row = document.createElement("div");
+          row.className = "stat-row";
+          row.innerHTML = `<span class="shift-badge" style="background:${esc(data.color)};">${esc(title)}</span><span><strong>${data.count}</strong> 天 （${Math.round(data.hours * 100) / 100} 小時）</span>`;
+          body.appendChild(row);
+        });
+      }
+      const totalBox = document.createElement("div");
+      totalBox.className = "stat-total";
+      totalBox.innerHTML = `<span>本月總上班：${stats.totalShiftDays} 天</span><span>總工時：${stats.totalShiftHours} 小時</span>`;
+      body.appendChild(totalBox);
+      openModal("statsModal");
+    }
+
+    function openAddEventModal(presetDateStr = null) {
+      document.getElementById("eventFormTitle").textContent = "添加行程";
+      document.getElementById("editItemId").value = "";
+      document.getElementById("editItemType").value = "event";
+      document.getElementById("evTitle").value = "";
+      document.getElementById("evDate").value = presetDateStr || formatDateStr(new Date(currentYear, currentMonth, 1));
+      set24HSelectValue("evStart", "");
+      set24HSelectValue("evEnd", "");
+      document.getElementById("evNote").value = "";
+      selectedEvColor = COLOR_PALETTE[0].hex;
+      renderColorPalette("evColorPalette", selectedEvColor, (hex) => selectedEvColor = hex);
+      openModal("eventFormModal");
+    }
+
+    function openEditItemModal(item) {
+      closeModal("detailModal");
+      document.getElementById("eventFormTitle").textContent = item.type === "shift" ? "編輯單日班表" : "編輯行程";
+      document.getElementById("editItemId").value = item.id;
+      document.getElementById("editItemType").value = item.type;
+      document.getElementById("evTitle").value = item.title;
+      document.getElementById("evDate").value = item.date;
+      set24HSelectValue("evStart", item.startTime || "");
+      set24HSelectValue("evEnd", item.endTime || "");
+      document.getElementById("evNote").value = item.note || "";
+      selectedEvColor = item.color || COLOR_PALETTE[0].hex;
+      renderColorPalette("evColorPalette", selectedEvColor, (hex) => selectedEvColor = hex);
+      openModal("eventFormModal");
+    }
+
+    function saveEventItem() {
+      const id = document.getElementById("editItemId").value;
+      const title = document.getElementById("evTitle").value.trim();
+      const date = document.getElementById("evDate").value;
+      const startTime = get24HSelectValue("evStart");
+      const endTime = get24HSelectValue("evEnd");
+      const note = document.getElementById("evNote").value.trim();
+
+      if (!title || !date) return alert("請填寫「標題名稱」與「日期」！");
+      const span = calculateShiftHours(startTime, endTime);
+
+      const old = appData.items.find(it => it.id === id)
+        || { id: id || generateId(), type: document.getElementById("editItemType").value };
+      putItem({ ...old, date, title, startTime, endTime, hours: span.hours, color: selectedEvColor, note });
+      commit();
+      closeModal("eventFormModal");
+    }
+
+    function openDetailModal(itemId) {
+      const item = appData.items.find(it => it.id === itemId);
+      if (!item) return;
+      const badge = document.getElementById("detailHeaderBadge");
+      badge.textContent = item.title;
+      badge.style.backgroundColor = item.color;
+
+      const timeStr = (item.startTime && item.endTime) ? `${item.startTime} - ${item.endTime} (24H)` : (item.startTime || "未設定時段");
+      const typeLabel = item.type === "shift" ? "輪班排程" : "個人行程";
+      const hoursHtml = (item.startTime && item.endTime) ? `<div><strong>計算工時：</strong>${item.hours} 小時</div>` : "";
+
+      document.getElementById("detailBody").innerHTML = `
+        <div><strong>類型：</strong>${typeLabel}</div>
+        <div><strong>日期：</strong>${esc(item.date)}</div>
+        <div><strong>時段：</strong>${esc(timeStr)}</div>
+        ${hoursHtml}
+        <div><strong>備註：</strong>${item.note ? esc(item.note).replace(/&#10;|\n/g, "<br/>") : "<span style='color:#80868b;'>無備註</span>"}</div>
+      `;
+
+      document.getElementById("detailDeleteBtn").onclick = () => {
+        if (confirm(`確定要刪除「${item.date} ${item.title}」嗎？`)) {
+          removeItem(item.id);
+          commit();
+          closeModal("detailModal");
+        }
+      };
+      document.getElementById("detailEditBtn").onclick = () => openEditItemModal(item);
+      openModal("detailModal");
+    }
+
+    function openShiftSetupModal() {
+      resetShiftDefForm();
+      renderShiftDefList();
+      renderSnakeBuilder();
+      openModal("shiftSetupModal");
+    }
+
+    function updateShiftHoursPreview() {
+      const s = get24HSelectValue("sdStart");
+      const e = get24HSelectValue("sdEnd");
+      const span = calculateShiftHours(s, e);
+      document.getElementById("sdCalcHoursDisplay").value = `${span.hours} 小時`;
+      document.getElementById("sdCrossDayHint").textContent = span.desc || "請選擇上下班時間";
+    }
+
+    function resetShiftDefForm() {
+      document.getElementById("editShiftDefId").value = "";
+      document.getElementById("sdName").value = "";
+      set24HSelectValue("sdStart", "08:00");
+      set24HSelectValue("sdEnd", "16:00");
+      document.getElementById("sdNote").value = "";
+      document.getElementById("cancelEditShiftDefBtn").style.display = "none";
+      selectedSdColor = COLOR_PALETTE[0].hex;
+      renderColorPalette("sdColorPalette", selectedSdColor, (hex) => selectedSdColor = hex);
+      updateShiftHoursPreview();
+    }
+
+    function saveShiftDefinition() {
+      const id = document.getElementById("editShiftDefId").value;
+      const name = document.getElementById("sdName").value.trim();
+      const start = get24HSelectValue("sdStart");
+      const end = get24HSelectValue("sdEnd");
+      const note = document.getElementById("sdNote").value.trim();
+      if (!name || !start || !end) return alert("請填寫班別名稱與上下班時間！");
+
+      const defId = id || generateId();
+      setRecord("def", defId, { id: defId, name, start, end, color: selectedSdColor, note });
+      commit();
+      resetShiftDefForm();
+      renderShiftDefList();
+      renderSnakeBuilder();
+    }
+
+    function editShiftDefinition(def) {
+      document.getElementById("editShiftDefId").value = def.id;
+      document.getElementById("sdName").value = def.name;
+      set24HSelectValue("sdStart", def.start);
+      set24HSelectValue("sdEnd", def.end);
+      document.getElementById("sdNote").value = def.note || "";
+      document.getElementById("cancelEditShiftDefBtn").style.display = "inline-block";
+      selectedSdColor = def.color;
+      renderColorPalette("sdColorPalette", selectedSdColor, (hex) => selectedSdColor = hex);
+      updateShiftHoursPreview();
+    }
+
+    function deleteShiftDefinition(defId) {
+      if (!confirm("確定要刪除此班別嗎？")) return;
+      setRecord("def", defId, null);
+      appData.snakeCycle = appData.snakeCycle.filter(cid => cid !== defId);
+      saveCycle();
+      commit();
+      renderShiftDefList();
+      renderSnakeBuilder();
+    }
+
+    function renderShiftDefList() {
+      const container = document.getElementById("shiftDefList");
+      container.innerHTML = "";
+      appData.shiftDefs.forEach(def => {
+        const span = calculateShiftHours(def.start, def.end);
+        const card = document.createElement("div");
+        card.className = "shift-def-card";
+        card.innerHTML = `
+          <div><span class="shift-badge" style="background:${esc(def.color)};">${esc(def.name)}</span><span style="font-size:13px; margin-left:6px; font-weight:600;">${esc(def.start)} - ${esc(def.end)} (${span.hours}h)</span></div>
+          <div style="display:flex; gap:6px;"><button class="btn btn-secondary btn-sm">改</button><button class="btn btn-danger btn-sm">刪</button></div>
+        `;
+        const btns = card.querySelectorAll("button");
+        btns[0].onclick = () => editShiftDefinition(def);
+        btns[1].onclick = () => deleteShiftDefinition(def.id);
+        container.appendChild(card);
+      });
+    }
+
+    function renderSnakeBuilder() {
+      const btnArea = document.getElementById("snakeAddButtons");
+      btnArea.innerHTML = "";
+      appData.shiftDefs.forEach(def => {
+        const b = document.createElement("button");
+        b.className = "btn btn-sm";
+        b.style.backgroundColor = def.color;
+        b.style.color = "#000";
+        b.style.border = "1px solid rgba(0,0,0,0.15)";
+        b.textContent = `+ ${def.name}`;
+        b.onclick = () => updateCycle(c => c.push(def.id));
+        btnArea.appendChild(b);
+      });
+      const emptyBtn = document.createElement("button");
+      emptyBtn.className = "btn btn-secondary btn-sm";
+      emptyBtn.style.border = "1px dashed #5f6368";
+      emptyBtn.textContent = "+ 空白(休)";
+      emptyBtn.onclick = () => updateCycle(c => c.push("EMPTY"));
+      btnArea.appendChild(emptyBtn);
+
+      renderSnakeSequenceDOM(document.getElementById("snakeSequenceBox"), true);
+      document.getElementById("snakeLengthLabel").textContent = `目前週期長度：${appData.snakeCycle.length} 天`;
+    }
+
+    function renderSnakeSequenceDOM(container, interactive) {
+      container.innerHTML = "";
+      if (appData.snakeCycle.length === 0) {
+        container.innerHTML = `<span style="color:#80868b; font-size:13px;">尚未設定週期...</span>`;
+        return;
+      }
+      appData.snakeCycle.forEach((nodeId, idx) => {
+        if (idx > 0) {
+          const arrow = document.createElement("span");
+          arrow.className = "snake-arrow";
+          arrow.textContent = "→";
+          container.appendChild(arrow);
+        }
+        const chip = document.createElement("span");
+        if (nodeId === "EMPTY") {
+          chip.className = "snake-node empty-node";
+          chip.textContent = interactive ? "空 ✕" : "空";
+        } else {
+          const def = appData.shiftDefs.find(s => s.id === nodeId);
+          chip.className = "snake-node";
+          chip.style.backgroundColor = def ? def.color : "#E2E8F0";
+          chip.textContent = def ? (interactive ? `${def.name} ✕` : def.name) : "未知";
+        }
+        if (interactive) {
+          chip.onclick = () => updateCycle(c => c.splice(idx, 1));
+        }
+        container.appendChild(chip);
+      });
+    }
+
+    function updateCycle(change) {
+      change(appData.snakeCycle);
+      saveCycle();
+      commit();
+      renderSnakeBuilder();
+    }
+    function clearSnakeSequence() { updateCycle(c => c.splice(0)); }
+
+    function openBatchShiftModal() {
+      renderSnakeSequenceDOM(document.getElementById("batchShiftPreview"), false);
+      document.getElementById("bsStartDate").value = formatDateStr(new Date(currentYear, currentMonth, 1));
+      document.getElementById("bsEndDate").value = formatDateStr(new Date(currentYear, currentMonth + 1, 0));
+      openModal("batchShiftModal");
+    }
+
+    function executeBatchShift() {
+      if (appData.snakeCycle.length === 0) return alert("請先設定輪班週期！");
+      const startStr = document.getElementById("bsStartDate").value;
+      const endStr = document.getElementById("bsEndDate").value;
+      if (!startStr || !endStr || startStr > endStr) return alert("日期區間錯誤！");
+
+      let cursorStr = startStr, cycleIndex = 0, addedCount = 0;
+      while (cursorStr <= endStr) {
+        const nodeId = appData.snakeCycle[cycleIndex % appData.snakeCycle.length];
+        if (nodeId !== "EMPTY") {
+          const def = appData.shiftDefs.find(s => s.id === nodeId);
+          if (def) {
+            const span = calculateShiftHours(def.start, def.end);
+            putItem({
+              id: generateId(),
+              type: "shift",
+              date: cursorStr,
+              title: def.name,
+              startTime: def.start,
+              endTime: def.end,
+              hours: span.hours,
+              color: def.color,
+              note: def.note || "",
+              shiftDefId: def.id
+            });
+            addedCount++;
+          }
+        }
+        cursorStr = addDaysToDateStr(cursorStr, 1);
+        cycleIndex++;
+      }
+      commit();
+      closeModal("batchShiftModal");
+      alert(`已成功連續插入 ${addedCount} 筆排班！`);
+    }
+
+    function openBatchEventModal() {
+      const todayStr = formatDateStr(new Date());
+      document.getElementById("beSourceDate").value = todayStr;
+      document.getElementById("beTargetStart").value = todayStr;
+      document.getElementById("beTargetEnd").value = todayStr;
+      loadSourceDayEvents();
+      openModal("batchEventModal");
+    }
+
+    function loadSourceDayEvents() {
+      const srcDate = document.getElementById("beSourceDate").value;
+      const select = document.getElementById("beSourceEventSelect");
+      select.innerHTML = "";
+      const dayItems = appData.items.filter(it => it.date === srcDate);
+      if (dayItems.length === 0) {
+        select.innerHTML = `<option value="">該日期沒有任何行程或排班</option>`;
+        return;
+      }
+      dayItems.forEach(it => {
+        const opt = document.createElement("option");
+        opt.value = it.id;
+        opt.textContent = `${it.title}${(it.startTime && it.endTime) ? ` (${it.startTime}-${it.endTime})` : ""}`;
+        select.appendChild(opt);
+      });
+    }
+
+    function executeBatchEvent() {
+      const sourceId = document.getElementById("beSourceEventSelect").value;
+      const startStr = document.getElementById("beTargetStart").value;
+      const endStr = document.getElementById("beTargetEnd").value;
+      if (!sourceId || !startStr || !endStr || startStr > endStr) return alert("請確認來源行程與目標日期！");
+
+      const template = appData.items.find(it => it.id === sourceId);
+      if (!template) return;
+
+      let cursorStr = startStr, count = 0;
+      while (cursorStr <= endStr) {
+        putItem({ ...template, id: generateId(), date: cursorStr });
+        cursorStr = addDaysToDateStr(cursorStr, 1);
+        count++;
+      }
+      commit();
+      closeModal("batchEventModal");
+      alert(`已將「${template.title}」連續複製貼上 ${count} 天！`);
+    }
+
+    function openBatchDeleteModal() {
+      document.getElementById("bdStartDate").value = formatDateStr(new Date(currentYear, currentMonth, 1));
+      document.getElementById("bdEndDate").value = formatDateStr(new Date(currentYear, currentMonth + 1, 0));
+      openModal("batchDeleteModal");
+    }
+
+    function executeBatchDelete() {
+      const startStr = document.getElementById("bdStartDate").value;
+      const endStr = document.getElementById("bdEndDate").value;
+      const mode = document.querySelector('input[name="deleteMode"]:checked').value;
+      if (!startStr || !endStr || startStr > endStr) return alert("日期區間錯誤！");
+
+      const targets = appData.items.filter(it =>
+        it.date >= startStr && it.date <= endStr && (mode !== "shiftsOnly" || it.type === "shift"));
+      targets.forEach(it => removeItem(it.id));
+      commit();
+      closeModal("batchDeleteModal");
+      alert(`已刪除區間內共 ${targets.length} 筆資料！`);
+    }
+
+    async function exportCalendarImage() {
+      menuDropdown.classList.remove("open");
+      const captureArea = document.getElementById("calendar-capture-area");
+      const expHeader = document.getElementById("exportHeader");
+      const expFooter = document.getElementById("exportFooter");
+
+      document.getElementById("exportTitleText").textContent = `${currentYear}年 ${currentMonth + 1}月 排班行事曆`;
+      document.getElementById("exportDateStamp").textContent = `匯出日期：${formatDateStr(new Date())}`;
+
+      const stats = calculateMonthStats(currentYear, currentMonth);
+      const parts = Object.keys(stats.shiftMap).map(k => `${k}：${stats.shiftMap[k].count}天`);
+      parts.push(`總上班：${stats.totalShiftDays}天 (${stats.totalShiftHours}小時)`);
+      expFooter.innerHTML = `<strong>本月統計：</strong> ${esc(parts.join(" ｜ "))}`;
+
+      expHeader.classList.add("show");
+      expFooter.classList.add("show");
+      try {
+        const canvas = await html2canvas(captureArea, { scale: 2.5, backgroundColor: "#ffffff", useCORS: true });
+        const link = document.createElement("a");
+        link.download = `排班表_${currentYear}年${currentMonth + 1}月.png`;
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+      } catch (err) {
+        alert("圖片匯出失敗，請確認網路連線。");
+      } finally {
+        expHeader.classList.remove("show");
+        expFooter.classList.remove("show");
+      }
+    }
+
+    function openBackupModal() {
+      document.getElementById("importFileInput").value = "";
+      openModal("backupModal");
+    }
+
+    function exportBackupJSON() {
+      const blob = new Blob([JSON.stringify(appData, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `排班行事曆備份_${formatDateStr(new Date())}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function importBackupJSON(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          if (!parsed || !Array.isArray(parsed.items)) throw new Error("格式不符");
+          if (!await syncNow()) return alert("目前無法連線雲端，請連線後再還原。");
+          restoreBackup(parsed);
+          closeModal("backupModal");
+          alert(await syncNow() ? "備份資料已還原並同步至雲端！" : "備份已還原到本機，連線後會自動上傳。");
+        } catch (err) {
+          alert("還原失敗：無效的備份檔。");
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function restoreBackup(backup) {
+      const wanted = new Map();
+      const add = (kind, id, data) => wanted.set(id, { kind, data });
+      (backup.shiftDefs || appData.shiftDefs).forEach(d => add("def", d.id, d));
+      add("cycle", "cycle", backup.snakeCycle || appData.snakeCycle);
+      backup.items.forEach(it => add("item", it.id, it));
+
+      for (const rec of Object.values(cache.records)) {
+        if (!rec.deleted && !wanted.has(rec.id)) setRecord(rec.kind, rec.id, null);
+      }
+      for (const [id, { kind, data }] of wanted) {
+        const now = cache.records[id];
+        if (!now || now.deleted || JSON.stringify(now.data) !== JSON.stringify(data)) setRecord(kind, id, data);
+      }
+      commit();
+    }
+
+    // ================= 啟動流程與自動同步 =================
+    const autoSync = () => { if (!document.hidden) syncNow(); };
+    document.addEventListener("visibilitychange", autoSync);   // 切回 App / 分頁
+    window.addEventListener("focus", autoSync);
+    window.addEventListener("online", autoSync);               // 網路恢復
+    setInterval(autoSync, SYNC_INTERVAL_MS);                   // 畫面開著時定期檢查
+    // 同一台裝置開多個分頁：併入另一分頁尚未上傳的編輯
+    window.addEventListener("storage", (e) => {
+      if (e.key !== CACHE_KEY || !e.newValue) return;
+      const other = JSON.parse(e.newValue);
+      let merged = false;
+      for (const id in other.pending) {
+        const mine = cache.records[id];
+        if (!mine || other.records[id].mtime > mine.mtime) {
+          cache.records[id] = other.records[id];
+          cache.pending[id] = true;
+          merged = true;
+        }
+      }
+      if (merged) refreshViews();
+    });
+
+    init24HourSelects();
+    loadCache();
+    renderCalendar();
+    syncNow();
+  </script>
+</body>
+</html>
