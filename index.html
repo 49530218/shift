@@ -229,14 +229,13 @@
         <span style="font-size:11px;">▼</span>
       </button>
       <div class="nav-arrows">
-        <button class="icon-btn" id="prevMonthBtn">◀</button>
         <button class="icon-btn" id="todayBtn">今</button>
-        <button class="icon-btn" id="nextMonthBtn">▶</button>
+       
       </div>
     </div>
     <div class="header-right">
       <span class="sync-status" id="syncStatusBadge" onclick="syncNow()" title="點擊同步最新資料">☁️ 檢查中</span>
-      <button class="menu-btn" id="menuToggleBtn">☰ 功能表</button>
+      <button class="menu-btn" id="menuToggleBtn">☰</button>
     </div>
   </header>
 
@@ -312,11 +311,11 @@
         <div class="form-group"><label>日期 *</label><input type="date" id="evDate" /></div>
         <div class="form-row">
           <div class="form-group">
-            <label>開始時間 (24H，選填)</label>
+            <label>開始時間</label>
             <div class="time-24h-picker"><select id="evStartHour"></select><span>:</span><select id="evStartMin"></select></div>
           </div>
           <div class="form-group">
-            <label>結束時間 (24H，選填)</label>
+            <label>結束時間</label>
             <div class="time-24h-picker"><select id="evEndHour"></select><span>:</span><select id="evEndMin"></select></div>
           </div>
         </div>
@@ -359,11 +358,11 @@
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label>上班時間 (24H) *</label>
+              <label>上班時間</label>
               <div class="time-24h-picker"><select id="sdStartHour" onchange="updateShiftHoursPreview()"></select><span>:</span><select id="sdStartMin" onchange="updateShiftHoursPreview()"></select></div>
             </div>
             <div class="form-group">
-              <label>下班時間 (24H) *</label>
+              <label>下班時間</label>
               <div class="time-24h-picker"><select id="sdEndHour" onchange="updateShiftHoursPreview()"></select><span>:</span><select id="sdEndMin" onchange="updateShiftHoursPreview()"></select></div>
             </div>
           </div>
@@ -742,12 +741,12 @@
 
       if (eMin === 0 && sMin > 0) {
         const hrs = Math.round(((1440 - sMin) / 60) * 100) / 100;
-        return { hours: hrs, isCrossDay: false, desc: `24H制當日班次，工時 ${hrs} 小時全數計入排班日。` };
+        return { hours: hrs, isCrossDay: false, desc: `當日班次，工時 ${hrs} 小時全數計入排班日。` };
       }
 
       if (eMin >= sMin) {
         const hrs = Math.round(((eMin - sMin) / 60) * 100) / 100;
-        return { hours: hrs, isCrossDay: false, desc: `24H制當日班次，工時 ${hrs} 小時全數計入排班日。` };
+        return { hours: hrs, isCrossDay: false, desc: `當日班次，工時 ${hrs} 小時全數計入排班日。` };
       } else {
         const beforeMidnightMins = 1440 - sMin;
         const afterMidnightMins = eMin;
@@ -869,8 +868,6 @@
       if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.4) changeMonth(dx < 0 ? 1 : -1);
     }, { passive: true });
 
-    document.getElementById("prevMonthBtn").onclick = () => changeMonth(-1);
-    document.getElementById("nextMonthBtn").onclick = () => changeMonth(1);
     document.getElementById("todayBtn").onclick = () => {
       const now = new Date();
       currentYear = now.getFullYear();
